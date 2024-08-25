@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.5)
+project(OpenMidiProject)
+add_subdirectory(MIDIClockLib)
+add_subdirectory(MIDIDataLib)
+add_subdirectory(MIDIIOLib)
+add_subdirectory(MIDIStatus)
