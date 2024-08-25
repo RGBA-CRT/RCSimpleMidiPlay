@@ -48,7 +48,7 @@
 /* 汎用関数 ********************************************************************/
 
 /* size_tをlongに変換 */
-long size_ttolong (size_t n) {
+static long size_ttolong (size_t n) {
 	if (n > LONG_MAX) {
 		return LONG_MAX;
 	}
@@ -59,7 +59,7 @@ long size_ttolong (size_t n) {
 }
 
 /* INT_PTRをlongに変換 */
-long INT_PTRtolong (INT_PTR n) {
+static long INT_PTRtolong (INT_PTR n) {
 	if (n > LONG_MAX) {
 		return LONG_MAX;
 	}
@@ -70,7 +70,7 @@ long INT_PTRtolong (INT_PTR n) {
 }
 
 /* DLLMain　*******************************************************************/
-BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+static BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 	/* Windows10対策 */
 	switch (fdwReason) {
 	case DLL_PROCESS_ATTACH:

@@ -1,4 +1,4 @@
-﻿/******************************************************************************/
+/******************************************************************************/
 /*                                                                            */
 /*　MIDIData.c - MIDIDataソースファイル                    (C)2002-2021 くず  */
 /*                                                                            */
@@ -63,7 +63,7 @@
 /* 汎用関数 */
 
 /* 指定したバイト配列の和を求める */
-long Sum (unsigned char* pData, int nLen) {
+static long Sum (unsigned char* pData, int nLen) {
 	long lRet = 0;
 	long i;
 	assert (pData);
@@ -74,7 +74,7 @@ long Sum (unsigned char* pData, int nLen) {
 }
 
 /* size_tをlongに変換 */
-long size_ttolong (size_t n) {
+static long size_ttolong (size_t n) {
 	if (n > LONG_MAX) {
 		return LONG_MAX;
 	}
@@ -85,7 +85,7 @@ long size_ttolong (size_t n) {
 }
 
 /* INT_PTRをlongに変換 */
-long INT_PTRtolong (INT_PTR n) {
+static long INT_PTRtolong (INT_PTR n) {
 	if (n > LONG_MAX) {
 		return LONG_MAX;
 	}
@@ -149,7 +149,7 @@ wchar_t* __stdcall MIDIDataLib_SetLocaleW (int nCategory, const wchar_t* pszLoca
 }
 
 /* DLLMain */
-BOOL __stdcall DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+static BOOL __stdcall DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 	/* DLLが読み込まれたとき */
 	if (fdwReason == DLL_PROCESS_ATTACH) {
 	}
