@@ -1,14 +1,14 @@
 /******************************************************************************/
 /*                                                                            */
-/*  MIDIIO.c - MIDI���o�͗p���W���[��(Win32�p)             (C)2002-2021 ����  */
+/*  MIDIIO.c - MIDI入出力用モジュール(Win32用)             (C)2002-2021 くず  */
 /*                                                                            */
 /******************************************************************************/
 
-/* ���̃��W���[���͕��ʂ̂b����ŏ�����Ă���B */
-/* ���̃��C�u�����́AGNU �򓙈�ʌ��O���p�����_��(LGPL)�Ɋ�Â��z�z�����B */
-/* �v���W�F�N�g�z�[���y�[�W(��)�F"http://openmidiproject.sourceforge.jp/index.html" */
-/* MIDI���̓I�u�W�F�N�g�̃I�[�v���E�N���[�Y�E���Z�b�g�E�f�[�^��M(SYSX�܂�) */
-/* MIDI�o�̓I�u�W�F�N�g�̃I�[�v���E�N���[�Y�E���Z�b�g�E�f�[�^���M(SYSX�܂�) */
+/* このモジュールは普通のＣ言語で書かれている。 */
+/* このライブラリは、GNU 劣等一般公衆利用許諾契約書(LGPL)に基づき配布される。 */
+/* プロジェクトホームページ(仮)："http://openmidiproject.sourceforge.jp/index.html" */
+/* MIDI入力オブジェクトのオープン・クローズ・リセット・データ受信(SYSX含む) */
+/* MIDI出力オブジェクトのオープン・クローズ・リセット・データ送信(SYSX含む) */
 
 /* This library is free software; you can redistribute it and/or */
 /* modify it under the terms of the GNU Lesser General Public */
@@ -31,7 +31,7 @@
 #include <mmsystem.h>
 #include "MIDIIO.h"
 
-/* �ėp�}�N��(�ŏ��A�ő�A���ݍ���) ******************************************/
+/* 汎用マクロ(最小、最大、挟み込み) ******************************************/
 #ifndef MIN
 #define MIN(A,B) ((A)>(B)?(B):(A))
 #endif
@@ -42,12 +42,12 @@
 #define CLIP(A,B,C) ((A)>(B)?(A):((B)>(C)?(C):(B)))
 #endif
 
-/* WSIZEOF�}�N�� **************************************************************/
+/* WSIZEOFマクロ **************************************************************/
 #define WSIZEOF(STRING) (sizeof(STRING)/sizeof(wchar_t))
 
-/* �ėp�֐� ********************************************************************/
+/* 汎用関数 ********************************************************************/
 
-/* size_t��long�ɕϊ� */
+/* size_tをlongに変換 */
 long size_ttolong (size_t n) {
 	if (n > LONG_MAX) {
 		return LONG_MAX;
@@ -58,7 +58,7 @@ long size_ttolong (size_t n) {
 	return (long)n;
 }
 
-/* INT_PTR��long�ɕϊ� */
+/* INT_PTRをlongに変換 */
 long INT_PTRtolong (INT_PTR n) {
 	if (n > LONG_MAX) {
 		return LONG_MAX;
@@ -69,12 +69,12 @@ long INT_PTRtolong (INT_PTR n) {
 	return (long)n;
 }
 
-/* DLLMain�@*******************************************************************/
+/* DLLMain　*******************************************************************/
 BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
-	/* Windows10�΍� */
+	/* Windows10対策 */
 	switch (fdwReason) {
 	case DLL_PROCESS_ATTACH:
-		/*20210608 Windows10 Microsoft Print to PDF�ň�����悤�Ƃ���ƌł܂�̂Ŕp�~ */
+		/*20210608 Windows10 Microsoft Print to PDFで印刷しようとすると固まるので廃止 */
 		/* CoInitializeEx (NULL, COINIT_MULTITHREADED); */
 		break;
 	case DLL_PROCESS_DETACH:
@@ -84,9 +84,9 @@ BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 	return TRUE;
 }
 
-/* MIDI���o�͗��p�֐� *********************************************************/
+/* MIDI入出力両用関数 *********************************************************/
 
-/* �o�b�t�@�ɑ΂��ĊȈՃN���e�B�J���Z�N�V�����𒣂� */
+/* バッファに対して簡易クリティカルセクションを張る */
 static void MIDIIO_LockBuf (MIDI* pMIDI) {
 	_ASSERT (pMIDI);
 	while (pMIDI->m_bBufLocked) {
@@ -95,13 +95,13 @@ static void MIDIIO_LockBuf (MIDI* pMIDI) {
 	pMIDI->m_bBufLocked = 1;
 }
 
-/* �o�b�t�@�ɑ΂��ĊȈՃN���e�B�J���Z�N�V�����𔲂��� */
+/* バッファに対して簡易クリティカルセクションを抜ける */
 static void MIDIIO_UnLockBuf (MIDI* pMIDI) {
 	_ASSERT (pMIDI);
 	pMIDI->m_bBufLocked = 0;
 }
 
-/* �������u���b�N���e�L�X�g�\������ */
+/* メモリブロックをテキスト表現する */
 static void MIDIIO_Bin2Txt 
 (unsigned char* pBinData, long lBinDataLen, char* pTextData, long lTextDataLen) {
 	char szMsg1[256];
@@ -119,23 +119,23 @@ static void MIDIIO_Bin2Txt
 
 /******************************************************************************/
 /*                                                                            */
-/*  MIDIOut�N���X�֐��Q                                                       */
+/*  MIDIOutクラス関数群                                                       */
 /*                                                                            */
 /******************************************************************************/
 
-/* MIDI�o�̓f�o�C�X���J���ꂽ�Ƃ��ɌĂяo�����B(�B��) */
+/* MIDI出力デバイスが開かれたときに呼び出される。(隠蔽) */
 static void MIDIOut_OnMOMOpen 
 (HMIDIOUT hMIDIOut, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	;
 }
 
-/* MIDI�o�̓f�o�C�X������ꂽ�Ƃ��ɌĂяo�����B(�B��) */
+/* MIDI出力デバイスが閉じられたときに呼び出される。(隠蔽) */
 static void MIDIOut_OnMOMClose 
 (HMIDIOUT hMIDIOut, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	;
 }
 
-/* SYSX�̑��M���I�������Ƃ��ɌĂяo�����B(�B��) */
+/* SYSXの送信が終了したときに呼び出される。(隠蔽) */
 static void MIDIOut_OnMOMDone 
 (HMIDIOUT hMIDIOut, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	MIDIHDR* pMIDIHdr = (MIDIHDR*)(dwParam1);
@@ -145,47 +145,47 @@ static void MIDIOut_OnMOMDone
 	if (pMIDIOut == NULL) {
 		return;
 	}
-	/* ���Ԗڂ�SYSX�w�b�_�[�����M�������������o���� */
+	/* 何番目のSYSXヘッダーが送信完了したか検出する */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		if (pMIDIOut->m_pSysxHeader[i] == pMIDIHdr) {
 			break;
 		}
 	}
 	if (i >= MIDIIO_SYSXNUM) {
-		_RPTF0 (_CRT_WARN, "�x���FMIDIOut_OnMOMDone���ŏo���s����Sysx�f�[�^�����o���܂����B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIOut_OnMOMDone内で出所不明なSysxデータを検出しました。\r\n");
 		return;
 	}
-	/* �g�p�ς�SYSX�w�b�_�[�̕s����(20070106) */
+	/* 使用済みSYSXヘッダーの不準備(20070106) */
 	nRet = midiOutUnprepareHeader 
 		(pMIDIOut->m_pDeviceHandle, ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i])), sizeof(MIDIHDR));
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_OnMOMDone����midiOutUnprepareHeader��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIOut_OnMOMDone内でmidiOutUnprepareHeaderが%dを返しました。\r\n", nRet);
 	}
-	/* �g�p�ς�SYSX�w�b�_�[�̉��(20070520) */
+	/* 使用済みSYSXヘッダーの解放(20070520) */
 	HeapFree (GetProcessHeap (), 0, ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->lpData);
 	HeapFree (GetProcessHeap (), 0, (MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]));
 	pMIDIOut->m_pSysxHeader[i] = NULL;
 	
-	/* TODO �{���R�[���o�b�N�֐����ŃV�X�e���R�[���͋֎~�ł��邪�A */
-	/* ��LmidiOutUnprepareHeader��HeapFree�Ɍ���A���̂Ƃ�����͔������Ă��Ȃ��B */
+	/* TODO 本来コールバック関数内でシステムコールは禁止であるが、 */
+	/* 上記midiOutUnprepareHeaderとHeapFreeに限り、今のところ問題は発生していない。 */
 }
 
-/* MIDI�o�̓f�o�C�X���烁�b�Z�[�W���󂯎��R�[���o�b�N�֐��B(�B��) */
+/* MIDI出力デバイスからメッセージを受け取るコールバック関数。(隠蔽) */
 static void CALLBACK MidiOutProc (HMIDIOUT hMIDIOut, UINT wMsg,         
   DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	switch (wMsg) {
 	case MOM_OPEN:
-		_RPTF3 (_CRT_WARN, "MOM_OPEN, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MOM_OPEN, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIOut_OnMOMOpen (hMIDIOut, dwInstance, dwParam1, dwParam2);
 		break;
 	case MOM_CLOSE:
-		_RPTF3 (_CRT_WARN, "MOM_CLOSE, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MOM_CLOSE, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIOut_OnMOMClose (hMIDIOut, dwInstance, dwParam1, dwParam2);
 		break;
 	case MOM_DONE:
-		_RPTF3 (_CRT_WARN, "MOM_DONE, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MOM_DONE, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIOut_OnMOMDone (hMIDIOut, dwInstance, dwParam1, dwParam2);
 		break;
@@ -193,12 +193,12 @@ static void CALLBACK MidiOutProc (HMIDIOUT hMIDIOut, UINT wMsg,
 }
 
 
-/* MIDI�o�̓f�o�C�X�̐��𒲂ׂ� */
+/* MIDI出力デバイスの数を調べる */
 long __stdcall MIDIOut_GetDeviceNum () {
 	return midiOutGetNumDevs ();
 }
 
-/* MIDI�o�̓f�o�C�X�̖��O�𒲂ׂ�(ANSI) */
+/* MIDI出力デバイスの名前を調べる(ANSI) */
 long __stdcall MIDIOut_GetDeviceNameA (long lID, char* pszDeviceName, long lLen) {
 	int nRet;
 	long lLen2;
@@ -214,7 +214,7 @@ long __stdcall MIDIOut_GetDeviceNameA (long lID, char* pszDeviceName, long lLen)
 	return MIN (lLen - 1, lLen2);
 }
 
-/* MIDI�o�̓f�o�C�X�̖��O�𒲂ׂ�(UNICODE) */
+/* MIDI出力デバイスの名前を調べる(UNICODE) */
 long __stdcall MIDIOut_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lLen) {
 	int nRet;
 	long lLen2;
@@ -231,7 +231,7 @@ long __stdcall MIDIOut_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lL
 }
 
 
-/* MIDI�o�̓f�o�C�X���J��(ANSI) */
+/* MIDI出力デバイスを開く(ANSI) */
 MIDIOut* __stdcall MIDIOut_OpenA (const char* pszDeviceName) {
 	MIDIOUTCAPSA tagMIDIOutCaps;
 	MIDI* pMIDIOut;
@@ -240,7 +240,7 @@ MIDIOut* __stdcall MIDIOut_OpenA (const char* pszDeviceName) {
 	if (pszDeviceName == NULL) {
 		return NULL;
 	}
-	/* �f�o�C�X�����󕶎��񖔂�"None"����"�Ȃ�"�̏ꍇ�͉����J���Ȃ� */
+	/* デバイス名が空文字列又は"None"又は"なし"の場合は何も開かない */
 	if (*pszDeviceName == 0) {
 		return NULL;
 	}
@@ -248,8 +248,8 @@ MIDIOut* __stdcall MIDIOut_OpenA (const char* pszDeviceName) {
 		strcmp (pszDeviceName, MIDIIO_NONEJ) == 0) {
 		return NULL;
 	}
-	/* �f�o�C�X����"default"��"�f�t�H���g"��"MIDI Mapper"��"MIDI �}�b�p�["�ł���ꍇ�� */
-	/* �����I��MIDI�}�b�p�[(-1)�Ƃ���B */
+	/* デバイス名が"default"か"デフォルト"か"MIDI Mapper"か"MIDI マッパー"である場合は */
+	/* 強制的にMIDIマッパー(-1)とする。 */
 	else if (strcmp (pszDeviceName, MIDIIO_DEFAULT) == 0 ||
 		strcmp (pszDeviceName, MIDIIO_DEFAULTJ) == 0 ||
 		strcmp (pszDeviceName, MIDIIO_MIDIMAPPER) == 0 ||
@@ -257,7 +257,7 @@ MIDIOut* __stdcall MIDIOut_OpenA (const char* pszDeviceName) {
 		i = -1;
 		strncpy_s (tagMIDIOutCaps.szPname, 32, pszDeviceName, 31);
 	}
-	/* �f�o�C�X������͂����Ԗڂ�MIDI�o�̓f�o�C�X������ */
+	/* デバイス名を解析し何番目のMIDI出力デバイスか判定 */
 	else {
 		nNumDevices = midiOutGetNumDevs ();
 		for (i = 0; i < nNumDevices; i++) {
@@ -268,41 +268,41 @@ MIDIOut* __stdcall MIDIOut_OpenA (const char* pszDeviceName) {
 			}
 		}
 		if (i >= nNumDevices) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_OpenA����MIDI�o�̓f�o�C�X��������܂���B-%s\n", pszDeviceName);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIOut_OpenA内でMIDI出力デバイスが見つかりません。-%s\r\n", pszDeviceName);
 			return NULL;
 		}
 	}
-	/* MIDIOut�\���̂̊m�� */
+	/* MIDIOut構造体の確保 */
 	pMIDIOut = calloc (1, sizeof (MIDI));
 	if (pMIDIOut == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_OpenA����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIOut_OpenA内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	lDeviceNameLen = size_ttolong (strlen (pszDeviceName) + 1);
 	pMIDIOut->m_pDeviceName = calloc (lDeviceNameLen, sizeof (char));
 	if (pMIDIOut->m_pDeviceName == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_OpenA����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIOut_OpenA内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	strncpy_s ((char*)(pMIDIOut->m_pDeviceName), lDeviceNameLen, pszDeviceName, lDeviceNameLen - 1);
 	pMIDIOut->m_lMode = MIDIIO_MODEOUT;
-	/* MIDI�o�̓f�o�C�X�̃I�[�v�� */
+	/* MIDI出力デバイスのオープン */
 	nRet = midiOutOpen ((HMIDIOUT*)&(pMIDIOut->m_pDeviceHandle), i, 
 		(DWORD_PTR)MidiOutProc, (DWORD_PTR)pMIDIOut, CALLBACK_FUNCTION);
 	if (nRet != 0) {
 		free (pMIDIOut->m_pBuf);
 		free (pMIDIOut);
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_OpenA����midiOutOpen��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIOut_OpenA内でmidiOutOpenが%dを返しました。\r\n", nRet);
 		return NULL;
 	}
-	/* SYSX�w�b�_�[�̗̈�ݒ�(20070520) */
+	/* SYSXヘッダーの領域設定(20070520) */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		pMIDIOut->m_pSysxHeader[i] = NULL;
 	}
 	return pMIDIOut;
 }
 
-/* MIDI�o�̓f�o�C�X���J��(UNICODE) */
+/* MIDI出力デバイスを開く(UNICODE) */
 MIDIOut* __stdcall MIDIOut_OpenW (const wchar_t* pszDeviceName) {
 	MIDIOUTCAPSW tagMIDIOutCaps;
 	MIDI* pMIDIOut;
@@ -311,24 +311,24 @@ MIDIOut* __stdcall MIDIOut_OpenW (const wchar_t* pszDeviceName) {
 	if (pszDeviceName == NULL) {
 		return NULL;
 	}
-	/* �f�o�C�X�����󕶎��񖔂�"None"����"�Ȃ�"�̏ꍇ�͉����J���Ȃ� */
+	/* デバイス名が空文字列又は"None"又は"なし"の場合は何も開かない */
 	if (*pszDeviceName == 0) {
 		return NULL;
 	}
 	else if (wcscmp (pszDeviceName, L"(None)") == 0 ||
-		wcscmp (pszDeviceName, L"(�Ȃ�)") == 0) {
+		wcscmp (pszDeviceName, L"(なし)") == 0) {
 		return NULL;
 	}
-	/* �f�o�C�X����"default"��"�f�t�H���g"��"MIDI Mapper"��"MIDI �}�b�p�["�ł���ꍇ�� */
-	/* �����I��MIDI�}�b�p�[(-1)�Ƃ���B */
+	/* デバイス名が"default"か"デフォルト"か"MIDI Mapper"か"MIDI マッパー"である場合は */
+	/* 強制的にMIDIマッパー(-1)とする。 */
 	else if (wcscmp (pszDeviceName, L"Default") == 0 ||
-		wcscmp (pszDeviceName, L"�f�t�H���g") == 0 ||
+		wcscmp (pszDeviceName, L"デフォルト") == 0 ||
 		wcscmp (pszDeviceName, L"MIDI Mapper") == 0 ||
-		wcscmp (pszDeviceName, L"MIDI �}�b�p�[") == 0) {
+		wcscmp (pszDeviceName, L"MIDI マッパー") == 0) {
 		i = -1;
 		wcsncpy_s (tagMIDIOutCaps.szPname, 32, pszDeviceName, 31);
 	}
-	/* �f�o�C�X������͂����Ԗڂ�MIDI�o�̓f�o�C�X������ */
+	/* デバイス名を解析し何番目のMIDI出力デバイスか判定 */
 	else {
 		nNumDevices = midiOutGetNumDevs ();
 		for (i = 0; i < nNumDevices; i++) {
@@ -339,34 +339,34 @@ MIDIOut* __stdcall MIDIOut_OpenW (const wchar_t* pszDeviceName) {
 			}
 		}
 		if (i >= nNumDevices) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_OpenW����MIDI�o�̓f�o�C�X��������܂���B-%s\n", pszDeviceName);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIOut_OpenW内でMIDI出力デバイスが見つかりません。-%s\r\n", pszDeviceName);
 			return NULL;
 		}
 	}
-	/* MIDIOut�\���̂̊m�� */
+	/* MIDIOut構造体の確保 */
 	pMIDIOut = calloc (1, sizeof (MIDI));
 	if (pMIDIOut == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_OpenW����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIOut_OpenW内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	lDeviceNameLen = size_ttolong (wcslen (pszDeviceName) + 1);
 	pMIDIOut->m_pDeviceName = calloc (lDeviceNameLen, sizeof (wchar_t));
 	if (pMIDIOut->m_pDeviceName == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_OpenW����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIOut_OpenW内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	wcsncpy_s ((wchar_t*)(pMIDIOut->m_pDeviceName), lDeviceNameLen, pszDeviceName, lDeviceNameLen - 1);
 	pMIDIOut->m_lMode = MIDIIO_MODEOUT;
-	/* MIDI�o�̓f�o�C�X�̃I�[�v�� */
+	/* MIDI出力デバイスのオープン */
 	nRet = midiOutOpen ((HMIDIOUT*)&(pMIDIOut->m_pDeviceHandle), i, 
 		(DWORD_PTR)MidiOutProc, (DWORD_PTR)pMIDIOut, CALLBACK_FUNCTION);
 	if (nRet != 0) {
 		free (pMIDIOut->m_pBuf);
 		free (pMIDIOut);
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_OpenW����midiOutOpen��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIOut_OpenW内でmidiOutOpenが%dを返しました。\r\n", nRet);
 		return NULL;
 	}
-	/* SYSX�w�b�_�[�̗̈�ݒ�(20070520) */
+	/* SYSXヘッダーの領域設定(20070520) */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		pMIDIOut->m_pSysxHeader[i] = NULL;
 	}
@@ -374,7 +374,7 @@ MIDIOut* __stdcall MIDIOut_OpenW (const wchar_t* pszDeviceName) {
 }
 
 
-/* MIDI�o�̓f�o�C�X����� */
+/* MIDI出力デバイスを閉じる */
 long __stdcall MIDIOut_Close (MIDIOut* pMIDIOut) {
 	int nRet;
 	int i, t;
@@ -382,9 +382,9 @@ long __stdcall MIDIOut_Close (MIDIOut* pMIDIOut) {
 		return 1;
 	}
 	_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
-	/* MIDI�o�̓��Z�b�g */
+	/* MIDI出力リセット */
 	midiOutReset (pMIDIOut->m_pDeviceHandle);
-	/* ���ׂĂ�SYSX�w�b�_�[�ɑ΂���MOM_DONE��҂�(100�񎎍s) */
+	/* すべてのSYSXヘッダーに対してMOM_DONEを待つ(100回試行) */
 	for (t = 0; t < 100; t++) {
 		for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 			if (pMIDIOut->m_pSysxHeader[i] != NULL) {
@@ -397,15 +397,15 @@ long __stdcall MIDIOut_Close (MIDIOut* pMIDIOut) {
 		Sleep (10);
 	}
 	if (t == 100) {
-		_RPTF0 (_CRT_WARN, "�x���FMIDIOut_Close����MOM_DONE���R�[���o�b�N����Ă��Ȃ��o�b�t�@������܂��B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIOut_Close内でMOM_DONEがコールバックされていないバッファがあります。\r\n");
 	}
-	/* MIDI�o�̓f�o�C�X����� */
+	/* MIDI出力デバイスを閉じる */
 	nRet = midiOutClose (pMIDIOut->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_Close����midiOutClose��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIOut_Close内でmidiOutCloseが%dを返しました。\r\n", nRet);
 		return 0;
 	}
-	/* ���̃I�u�W�F�N�g�̉�� */
+	/* このオブジェクトの解放 */
 	free (pMIDIOut->m_pBuf);
 	pMIDIOut->m_pBuf = NULL;
 	free (pMIDIOut->m_pDeviceName);
@@ -414,81 +414,82 @@ long __stdcall MIDIOut_Close (MIDIOut* pMIDIOut) {
 	return 1;
 }
 
-/* MIDI�o�̓f�o�C�X���ĂъJ��(ANSI) */
+/* MIDI出力デバイスを再び開く(ANSI) */
 MIDIOut* __stdcall MIDIOut_ReopenA (MIDIOut* pMIDIOut, const char* pszDeviceName) {
 	int nRet = 0;
 	if (pMIDIOut) {
 		_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
 		nRet = MIDIOut_Close (pMIDIOut);
 		if (nRet == 0) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_ReopenA����MIDIOut_Close��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIOut_ReopenA内でMIDIOut_Closeが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 	}
 	return MIDIOut_OpenA (pszDeviceName);
 }
 
-/* MIDI�o�̓f�o�C�X���ĂъJ��(UNICODE) */
+/* MIDI出力デバイスを再び開く(UNICODE) */
 MIDIOut* __stdcall MIDIOut_ReopenW (MIDIOut* pMIDIOut, const wchar_t* pszDeviceName) {
 	int nRet = 0;
 	if (pMIDIOut) {
 		_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
 		nRet = MIDIOut_Close (pMIDIOut);
 		if (nRet == 0) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_ReopenW����MIDIOut_Close��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIOut_ReopenW内でMIDIOut_Closeが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 	}
 	return MIDIOut_OpenW (pszDeviceName);
 }
 
-/* MIDI�o�̓f�o�C�X�����Z�b�g���� */
+/* MIDI出力デバイスをリセットする */
 long __stdcall MIDIOut_Reset (MIDIOut* pMIDIOut) {
 	int nRet = 0;
 	_ASSERT (pMIDIOut);
 	_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
 	nRet = midiOutReset (pMIDIOut->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_Reset����midiOutReset��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIOut_Reset内でmidiOutResetが%dを返しました。\r\n", nRet);
 		return 0;
 	}
 	return 1;
 }
 
-/* MIDI�o�̓f�o�C�X��MIDI���b�Z�[�W��1�o�͂��� */
+/* MIDI出力デバイスにMIDIメッセージを1つ出力する */
 long __stdcall MIDIOut_PutMIDIMessage (MIDIOut* pMIDIOut, unsigned char* pMessage, long lLen) {
 	_ASSERT (pMIDIOut);
 	_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
 	_ASSERT (pMessage);
 	_ASSERT (1 <= lLen && lLen <= MIDIIO_MAXSYSXSIZE);
-	/* �V�X�e���G�N�X�N���[�V�����b�Z�[�W */
+	/* システムエクスクルーシヴメッセージ */
 	if (lLen >= 1 && *pMessage == 0xF0) {
 		int nRet;
 		int i;
-		/* �󂢂Ă���SysxHeader��T���B */
+		/* 空いているSysxHeaderを探す。 */
 		for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 			if (pMIDIOut->m_pSysxHeader[i] == NULL) {
 				break;
 			}
 		}
 		if (i >= MIDIIO_SYSXNUM) {
-			_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_PutMIDIMessage�Ŏg�p�\��SYSX�w�b�_�[�����͂₠��܂���B\n");
+			_RPTF0 (_CRT_WARN, "エラー：MIDIOut_PutMIDIMessageで使用可能なSYSXヘッダーがもはやありません。\r\n");
 			return 0;
 		}
-		/* SysxHeader�̃o�b�t�@�m�� */
-		(MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]) = 
+		/* SysxHeaderのバッファ確保 */
+
+		pMIDIOut->m_pSysxHeader[i] =
 			(MIDIHDR*)HeapAlloc(GetProcessHeap (), HEAP_ZERO_MEMORY, sizeof (MIDIHDR));
 		if ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]) == NULL) {
-			_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_PutMIDIMessage��HeapAlloc��NULL��Ԃ��܂����B\n");
+			_RPTF0 (_CRT_WARN, "エラー：MIDIOut_PutMIDIMessageでHeapAllocがNULLを返しました。\r\n");
 			return 0;
 		}
 		((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->lpData = 
 			(char*)HeapAlloc (GetProcessHeap (), HEAP_NO_SERIALIZE, MIN (lLen, MIDIIO_MAXSYSXSIZE));
 		if (((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->lpData == NULL) {
-			_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_PutMIDIMessage��HeapAlloc��NULL��Ԃ��܂����B\n");
+			_RPTF0 (_CRT_WARN, "エラー：MIDIOut_PutMIDIMessageでHeapAllocがNULLを返しました。\r\n");
 			return 0;
 		}
-		/* SYSX�w�b�_�[�����̃f�[�^�p�̈��MIDI���b�Z�[�W���R�s�[ */
+		/* SYSXヘッダー内部のデータ用領域にMIDIメッセージをコピー */
 		((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->dwBufferLength = MIN (lLen, MIDIIO_MAXSYSXSIZE);
 		memcpy (((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->lpData, pMessage, MIN (lLen, MIDIIO_MAXSYSXSIZE));
 		((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->dwBytesRecorded = MIN (lLen, MIDIIO_MAXSYSXSIZE);
@@ -496,14 +497,14 @@ long __stdcall MIDIOut_PutMIDIMessage (MIDIOut* pMIDIOut, unsigned char* pMessag
 		nRet = midiOutPrepareHeader 
 			(pMIDIOut->m_pDeviceHandle, ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i])), sizeof (MIDIHDR));
 		if (nRet != MMSYSERR_NOERROR) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_PutMIDIMessage����midiOutPrepareHeader��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIOut_PutMIDIMessage内でmidiOutPrepareHeaderが%dを返しました。\r\n", nRet);
 			return 0;
 		}
-		/* midiOutLongMsg...���̊֐����s���ォ�����MOM_DONE���R�[���o�b�N����� */
+		/* midiOutLongMsg...この関数実行直後かやや後にMOM_DONEがコールバックされる */
 		nRet = midiOutLongMsg 
 			(pMIDIOut->m_pDeviceHandle, ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i])), sizeof(MIDIHDR));
 		if (nRet != MMSYSERR_NOERROR) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIOut_PutMIDIMessage����midiOutLongMsg��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIOut_PutMIDIMessage内でmidiOutLongMsgが%dを返しました。\r\n", nRet);
 			nRet = midiOutUnprepareHeader 
 				(pMIDIOut->m_pDeviceHandle, ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i])), sizeof (MIDIHDR));
 			HeapFree (GetProcessHeap (), 0, ((MIDIHDR*)(pMIDIOut->m_pSysxHeader[i]))->lpData);
@@ -513,7 +514,7 @@ long __stdcall MIDIOut_PutMIDIMessage (MIDIOut* pMIDIOut, unsigned char* pMessag
 		}
 		return lLen;
 	}
-	/* �ʏ��MIDI���b�Z�[�W���̓V�X�e�����A���^�C�����b�Z�[�W���̓V�X�e���R�������b�Z�[�W */
+	/* 通常のMIDIメッセージ又はシステムリアルタイムメッセージ又はシステムコモンメッセージ */
 	else if (1 <= lLen && lLen <= 3) {
 		unsigned long lMsg;
 		switch (lLen) {
@@ -530,14 +531,14 @@ long __stdcall MIDIOut_PutMIDIMessage (MIDIOut* pMIDIOut, unsigned char* pMessag
 		midiOutShortMsg (pMIDIOut->m_pDeviceHandle, lMsg);
 		return lLen;
 	}
-	/* �ُ��MIDI���b�Z�[�W */
+	/* 異常なMIDIメッセージ */
 	else {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_PutMIDIMessage���ňُ��MIDI���b�Z�[�W�����o����܂����B");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIOut_PutMIDIMessage内で異常なMIDIメッセージが検出されました。\r\n");
 		return 0;
 	}
 }
 
-/* MIDI�o�̓f�o�C�X��1�o�C�g�o�͂��� */
+/* MIDI出力デバイスに1バイト出力する */
 long __stdcall MIDIOut_PutByte (MIDIOut* pMIDIOut, unsigned char c) {
 	_ASSERT (pMIDIOut);
 	_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
@@ -545,12 +546,12 @@ long __stdcall MIDIOut_PutByte (MIDIOut* pMIDIOut, unsigned char c) {
 	return 1;
 }
 
-/* MIDI�o�̓f�o�C�X�ɔC�Ӓ��̃f�[�^���o�͂��� */
+/* MIDI出力デバイスに任意長のデータを出力する */
 long __stdcall MIDIOut_PutBytes (MIDIOut* pMIDIOut, unsigned char* pData, long lLen) {
 	unsigned char cRunningStatus = 0;
 	long lRet = 0;
 	long lLen2 = 0;
-	char* p1 = pData;
+	unsigned char* p1 = pData;
 	_ASSERT (pMIDIOut);
 	_ASSERT (pMIDIOut->m_lMode == MIDIIO_MODEOUT);
 	if (pMIDIOut == NULL) {
@@ -587,7 +588,7 @@ long __stdcall MIDIOut_PutBytes (MIDIOut* pMIDIOut, unsigned char* pData, long l
 					p1++;	
 				}
 				lLen2 = 0;
-				_RPTF0 (_CRT_WARN, "�G���[�FMIDIOut_PutBytes���ňُ��MIDI���b�Z�[�W�����o���܂����B\n");
+				_RPTF0 (_CRT_WARN, "エラー：MIDIOut_PutBytes内で異常なMIDIメッセージを検出しました。\r\n");
 			}
 		}
 		else if (*p1 == 0xF0) {
@@ -620,7 +621,7 @@ long __stdcall MIDIOut_PutBytes (MIDIOut* pMIDIOut, unsigned char* pData, long l
 	return lRet;
 }
 
-/* ����MIDI���̓f�o�C�X�̖��O���擾����(ANSI)(20120415�ǉ�) */
+/* このMIDI入力デバイスの名前を取得する(ANSI)(20120415追加) */
 long __stdcall MIDIOut_GetThisDeviceNameA (MIDIOut* pMIDIOut, char* pszDeviceName, long lLen) {
 	long lLen2;
 	_ASSERT (pMIDIOut);
@@ -631,7 +632,7 @@ long __stdcall MIDIOut_GetThisDeviceNameA (MIDIOut* pMIDIOut, char* pszDeviceNam
 	return CLIP (0, lLen2, lLen - 1);
 }
 
-/* ����MIDI���̓f�o�C�X�̖��O���擾����(UNICODE)(20120415�ǉ�) */
+/* このMIDI入力デバイスの名前を取得する(UNICODE)(20120415追加) */
 long __stdcall MIDIOut_GetThisDeviceNameW (MIDIOut* pMIDIOut, wchar_t* pszDeviceName, long lLen) {
 	long lLen2;
 	_ASSERT (pMIDIOut);
@@ -644,24 +645,24 @@ long __stdcall MIDIOut_GetThisDeviceNameW (MIDIOut* pMIDIOut, wchar_t* pszDevice
 
 /******************************************************************************/
 /*                                                                            */
-/*  MIDIIn�N���X�֐��Q                                                        */
+/*  MIDIInクラス関数群                                                        */
 /*                                                                            */
 /******************************************************************************/
 
 
-/* MIDI���̓f�o�C�X���J���ꂽ�Ƃ��ɌĂяo�����B(�B��) */
+/* MIDI入力デバイスが開かれたときに呼び出される。(隠蔽) */
 static void MIDIIn_OnMIMOpen 
 (HMIDIIN hMIDIn, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	;
 }
 
-/* MIDI���̓f�o�C�X������ꂽ�Ƃ��ɌĂяo�����B(�B��) */
+/* MIDI入力デバイスが閉じられたときに呼び出される。(隠蔽) */
 static void MIDIIn_OnMIMClose 
 (HMIDIIN hMIDIIn, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	;
 }
 
-/* MIDI�f�[�^(SYSX����)�����͂��ꂽ�Ƃ��ɌĂяo�����B(�B��) */
+/* MIDIデータ(SYSX除く)が入力されたときに呼び出される。(隠蔽) */
 static void MIDIIn_OnMIMData 
 (HMIDIIN hMIDIIn, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	MIDI* pMIDIIn = (MIDI*)dwInstance;
@@ -673,24 +674,24 @@ static void MIDIIn_OnMIMData
 	cData[3] = (unsigned char)((dwParam1 & 0xFF000000) >> 24);
 
 	if (0x80 <= cData[0] && cData[0] <= 0xBF ||
-		0xE0 <= cData[0] && cData[0] <= 0xEF || cData[0] == 0xF2) { // 20090627�C��
+		0xE0 <= cData[0] && cData[0] <= 0xEF || cData[0] == 0xF2) { // 20090627修正
 		lLen = 3;
 	}
 	else if (0xC0 <= cData[0] && cData[0] <= 0xDF ||
-		cData[0] == 0xF1 || cData[0] == 0xF3) { // 20090626�C��
+		cData[0] == 0xF1 || cData[0] == 0xF3) { // 20090626修正
 		lLen = 2;
 	}
-	else if (cData[0] == 0xF6 || 0xF8 <= cData[0] && cData[0] <= 0xFF) { // 20090626�C��
+	else if (cData[0] == 0xF6 || 0xF8 <= cData[0] && cData[0] <= 0xFF) { // 20090626修正
 		lLen = 1;
 	}
-	/* SYSX��M��MIM_LONGDATA�̎d���ł��邽�߁A�����ł̓G���[�Ƃ݂Ȃ��B */
-	else if (cData[0]== 0xF0) { // 20090626�C��
+	/* SYSX受信はMIM_LONGDATAの仕事であるため、ここではエラーとみなす。 */
+	else if (cData[0]== 0xF0) { // 20090626修正
 		lLen = 0;
-		_RPTF0 (_CRT_WARN, "�x���FMIDIIn_OnMIMData����Sysx�����o���܂����B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIIn_OnMIMData内でSysxを検出しました。\r\n");
 	}
-	else { // 20090626�ǉ�
+	else { // 20090626追加
 		lLen = 0;
-		_RPTF0 (_CRT_WARN, "�x���FMIDIIn_OnMIMData���ŕs���Ȏ�ނ�MIDI���b�Z�[�W�����o���܂����B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIIn_OnMIMData内で不明な種類のMIDIメッセージを検出しました。\r\n");
 	}
 
 	if (pMIDIIn->m_lWritePosition + lLen < pMIDIIn->m_lBufSize) {
@@ -705,13 +706,13 @@ static void MIDIIn_OnMIMData
 		pMIDIIn->m_lWritePosition = lLen - (pMIDIIn->m_lBufSize - pMIDIIn->m_lWritePosition);
 	}
 	else {
-		_RPTF0 (_CRT_WARN, "�x���FMIDIIn_OnMIMData���Ńo�b�t�@�T�C�Y��蒷���f�[�^�����o���܂����B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIIn_OnMIMData内でバッファサイズより長いデータを検出しました。\r\n");
 	}
-	/* TODO �{���R�[���o�b�N�֐����ŃV�X�e���R�[���͋֎~�ł��邪�A */
-	/* ��Lmemcpy�Ɍ���A���̂Ƃ�����͔������Ă��Ȃ��B */
+	/* TODO 本来コールバック関数内でシステムコールは禁止であるが、 */
+	/* 上記memcpyに限り、今のところ問題は発生していない。 */
 }
 
-/* MIDI�f�[�^(SYSX)�����͂��ꂽ�Ƃ��ɌĂяo����� */
+/* MIDIデータ(SYSX)が入力されたときに呼び出される */
 static void MIDIIn_OnMIMLongData 
 (HMIDIIN hMIDIIn, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	MIDI* pMIDIIn = (MIDI*)dwInstance;
@@ -720,22 +721,22 @@ static void MIDIIn_OnMIMLongData
 	long lLen = pMIDIHeader->dwBytesRecorded;
 	unsigned long nRet;
 	int i;
-	/* ���Ԗڂ�SYSX�w�b�_�[����M�������������o���� */
+	/* 何番目のSYSXヘッダーが受信完了したか検出する */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		if (pMIDIIn->m_pSysxHeader[i] == pMIDIHeader) {
 			break;
 		}
 	}
 	if (i >= MIDIIO_SYSXNUM) {
-		_RPTF0 (_CRT_WARN, "�x���FMIDIIn_OnMIMLongData���ŏo���s����Sysx�f�[�^�����o���܂����B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIIn_OnMIMLongData内で出所不明なSysxデータを検出しました。\r\n");
 	}
-	/* ���̓f�[�^���o�b�t�@�փR�s�[ */
+	/* 入力データをバッファへコピー */
 	MIDIIO_LockBuf (pMIDIIn);
 #ifdef _DEBUG
 	{
 		char szMsg[16384];
 		MIDIIO_Bin2Txt (pData, MIN (lLen, MIDIIO_MAXSYSXSIZE), szMsg, sizeof (szMsg));
-		_RPTF1 (_CRT_WARN, "���FMIDIIn_OnMIMLongData����Sysx����M���܂����B{%s}\n", szMsg);
+		_RPTF1 (_CRT_WARN, "情報：MIDIIn_OnMIMLongData内でSysxを受信しました。{%s}\r\n", szMsg);
 	}
 #endif
 	if (pMIDIIn->m_lWritePosition + lLen < pMIDIIn->m_lBufSize) {
@@ -750,31 +751,31 @@ static void MIDIIn_OnMIMLongData
 		pMIDIIn->m_lWritePosition = lLen - (pMIDIIn->m_lBufSize - pMIDIIn->m_lWritePosition);
 	}
 	else {
-		_RPTF0 (_CRT_WARN, "�x���FMIDIIn_OnMIMLongData���Ńo�b�t�@�T�C�Y��蒷��Sysx�f�[�^�����o���܂����B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIIn_OnMIMLongData内でバッファサイズより長いSysxデータを検出しました。\r\n");
 	}
 	MIDIIO_UnLockBuf (pMIDIIn);
 
-	/* midiInStart����midiInUnprepareHeader�ł��Ȃ� */
+	/* midiInStart中はmidiInUnprepareHeaderできない */
 	
-	/* ���łɓ��͒�~���Ă���ꍇ��return */
+	/* すでに入力停止している場合はreturn */
 	if (pMIDIIn->m_bStarting == 0) {
 		return;
 	}
-	/* ���͌p�����̏ꍇ�͎g�p�ς�SYSX�w�b�_�[���ė��p���� */
-	/* �g�p�ς�SYSX�w�b�_�[�̍ď��� */
+	/* 入力継続中の場合は使用済みSYSXヘッダーを再利用する */
+	/* 使用済みSYSXヘッダーの再準備 */
 	nRet = midiInPrepareHeader (hMIDIIn, pMIDIHeader, sizeof (MIDIHDR));
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OnMIMLongData����midiInPrepareHeader��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OnMIMLongData内でmidiInPrepareHeaderが%dを返しました。\r\n", nRet);
 		return;
 	}
-	/* �g�p�ς�SYSX�w�b�_�[�̍ēo�^ */
+	/* 使用済みSYSXヘッダーの再登録 */
 	midiInAddBuffer (hMIDIIn, pMIDIHeader, sizeof (MIDIHDR));
 	if (nRet != MMSYSERR_NOERROR) {
 		midiInUnprepareHeader (pMIDIIn->m_pDeviceHandle, pMIDIHeader, sizeof (MIDIHDR));
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OnMIMLongData����midiInAddBuffer��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OnMIMLongData内でmidiInAddBufferが%dを返しました。\r\n", nRet);
 	}
-	/* TODO �{���R�[���o�b�N�֐����ŃV�X�e���R�[���͋֎~�ł��邪�A */
-	/* ��Lmemcpy,midiInPrepareHeader,midiInAddBuffer�Ɍ���A���̂Ƃ�����͔������Ă��Ȃ��B */
+	/* TODO 本来コールバック関数内でシステムコールは禁止であるが、 */
+	/* 上記memcpy,midiInPrepareHeader,midiInAddBufferに限り、今のところ問題は発生していない。 */
 
 }
 
@@ -788,49 +789,49 @@ static void MIDIIn_OnMIMError
 
 }
 
-/* MIDI���̓f�o�C�X���烁�b�Z�[�W���󂯎��R�[���o�b�N�֐��B(�B��) */
+/* MIDI入力デバイスからメッセージを受け取るコールバック関数。(隠蔽) */
 static void CALLBACK MidiInProc (HMIDIIN hMIDIIn, UINT wMsg,         
   DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	switch (wMsg) {
 	case MIM_OPEN:
-		_RPTF3 (_CRT_WARN, "MIM_OPEN, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MIM_OPEN, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIIn_OnMIMOpen (hMIDIIn, dwInstance, dwParam1, dwParam2);
 		break;
 	case MIM_CLOSE:
-		_RPTF3 (_CRT_WARN, "MIM_CLOSE, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MIM_CLOSE, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIIn_OnMIMClose (hMIDIIn, dwInstance, dwParam1, dwParam2);
 		break;
 	case MIM_DATA:
-		//_RPTF3 (_CRT_WARN, "MIM_DATA, 0x%p, 0x%p, 0x%p\n", 
+		//_RPTF3 (_CRT_WARN, "MIM_DATA, 0x%p, 0x%p, 0x%p\r\n", 
 		//	dwInstance, dwParam1, dwParam2);
 		MIDIIn_OnMIMData (hMIDIIn, dwInstance, dwParam1, dwParam2);
 		break;
 	case MIM_LONGDATA:
-		_RPTF3 (_CRT_WARN, "MIM_LONGDATA, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MIM_LONGDATA, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIIn_OnMIMLongData (hMIDIIn, dwInstance, dwParam1, dwParam2);
 		break;
 	case MIM_LONGERROR:
-		_RPTF3 (_CRT_WARN, "MIM_LONGERROR, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MIM_LONGERROR, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIIn_OnMIMLongError (hMIDIIn, dwInstance, dwParam1, dwParam2);
 		break;
 	case MIM_ERROR:
-		_RPTF3 (_CRT_WARN, "MIM_ERROR, 0x%p, 0x%p, 0x%p\n", 
+		_RPTF3 (_CRT_WARN, "MIM_ERROR, 0x%p, 0x%p, 0x%p\r\n", 
 			dwInstance, dwParam1, dwParam2);
 		MIDIIn_OnMIMError (hMIDIIn, dwInstance, dwParam1, dwParam2);
 		break;
 	}
 }
 
-/* MIDI���̓f�o�C�X�̐��𒲂ׂ� */
+/* MIDI入力デバイスの数を調べる */
 long __stdcall MIDIIn_GetDeviceNum () {
 	return midiInGetNumDevs ();
 }
 
-/* MIDI���̓f�o�C�X�̖��O�𒲂ׂ�(ANSI) */
+/* MIDI入力デバイスの名前を調べる(ANSI) */
 long __stdcall MIDIIn_GetDeviceNameA (long lID, char* pszDeviceName, long lLen) {
 	int nRet;
 	long lLen2;
@@ -846,7 +847,7 @@ long __stdcall MIDIIn_GetDeviceNameA (long lID, char* pszDeviceName, long lLen) 
 	return MIN (lLen - 1, lLen2);
 }
 
-/* MIDI���̓f�o�C�X�̖��O�𒲂ׂ�(UNICODE) */
+/* MIDI入力デバイスの名前を調べる(UNICODE) */
 long __stdcall MIDIIn_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lLen) {
 	int nRet;
 	long lLen2;
@@ -863,7 +864,7 @@ long __stdcall MIDIIn_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lLe
 }
 
 
-/* MIDI���̓f�o�C�X���J��(ANSI) */
+/* MIDI入力デバイスを開く(ANSI) */
 MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 	MIDIINCAPSA tagMIDIInCaps;
 	MIDI* pMIDIIn = NULL;
@@ -873,7 +874,7 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 	if (pszDeviceName == NULL) {
 		return NULL;
 	}
-	/* �f�o�C�X�����󕶎��񖔂�"None"����"�Ȃ�"�̏ꍇ�͉����J���Ȃ� */
+	/* デバイス名が空文字列又は"None"又は"なし"の場合は何も開かない */
 	if (*pszDeviceName == 0) {
 		return NULL;
 	}
@@ -881,7 +882,7 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 		strcmp (pszDeviceName, MIDIIO_NONEJ) == 0) {
 		return NULL;
 	}
-	/* �f�o�C�X������͂����Ԗڂ�MIDI�o�̓f�o�C�X������ */
+	/* デバイス名を解析し何番目のMIDI出力デバイスか判定 */
 	nNumDevices = midiInGetNumDevs ();
 	for (i = 0; i < nNumDevices; i++) {
 		memset (&tagMIDIInCaps, 0, sizeof (MIDIINCAPSA));
@@ -890,19 +891,19 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 			break;
 	}
 	if (i >= nNumDevices) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����MIDI���̓f�o�C�X��������܂���B-%s\n", pszDeviceName);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でMIDI入力デバイスが見つかりません。-%s\r\n", pszDeviceName);
 		return NULL;
 	}
-	/* MIDIIn�\���̂̊m�� */
+	/* MIDIIn構造体の確保 */
 	pMIDIIn = calloc (1, sizeof (MIDI));
 	if (pMIDIIn == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIIn_OpenA内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	lDeviceNameLen = size_ttolong (strlen (pszDeviceName) + 1);
 	pMIDIIn->m_pDeviceName = calloc (lDeviceNameLen, sizeof (char));
 	if (pMIDIIn->m_pDeviceName == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIIn_OpenA内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	strncpy_s ((char*)(pMIDIIn->m_pDeviceName), lDeviceNameLen, pszDeviceName, lDeviceNameLen - 1);
@@ -912,28 +913,28 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 	pMIDIIn->m_pBuf = malloc (MIDIIO_BUFSIZE);
 	if (pMIDIIn->m_pBuf == NULL) {
 		free (pMIDIIn);
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����malloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIIn_OpenA内でmallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	pMIDIIn->m_lBufSize = MIDIIO_BUFSIZE;
 	MIDIIO_UnLockBuf (pMIDIIn);
-	/* MIDI���̓f�o�C�X�̃I�[�v�� */
+	/* MIDI入力デバイスのオープン */
 	nRet = midiInOpen ((HMIDIIN*)&(pMIDIIn->m_pDeviceHandle), i, 
 		(DWORD_PTR)MidiInProc, (DWORD_PTR)(pMIDIIn), CALLBACK_FUNCTION);
 	if (nRet != MMSYSERR_NOERROR) {
 		free (pMIDIIn->m_pBuf);
 		free (pMIDIIn);
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����midiInOpen��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でmidiInOpenが%dを返しました。\r\n", nRet);
 		return NULL;
 	}
-	/* SYSX�w�b�_�[���̗̈���m�ۂ��� */
+	/* SYSXヘッダーをの領域を確保する */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		pMIDIIn->m_pSysxHeader[i] = (MIDIHDR*)HeapAlloc (GetProcessHeap (),
 			HEAP_ZERO_MEMORY, sizeof (MIDIHDR));
 		if (pMIDIIn->m_pSysxHeader[i] == NULL) {
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����HeapAlloc��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でHeapAllocが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 
@@ -942,12 +943,12 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 		if (((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->lpData == NULL) {
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����HeapAlloc��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でHeapAllocが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 		((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->dwBufferLength = MIDIIO_MAXSYSXSIZE;
 	}
-	/* SYSX�w�b�_�[�����ׂđҋ@��Ԃɂ���(�X�^�[�g�O����) */
+	/* SYSXヘッダーをすべて待機状態にする(スタート前処理) */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		nRet = midiInPrepareHeader (pMIDIIn->m_pDeviceHandle, pMIDIIn->m_pSysxHeader[i], sizeof (MIDIHDR));
 		if (nRet != MMSYSERR_NOERROR) {
@@ -955,7 +956,7 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 			HeapFree (GetProcessHeap (), 0, (MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]));		
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����midiInPrepareHeader��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でmidiInPrepareHeaderが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 
@@ -967,11 +968,11 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 			HeapFree (GetProcessHeap (), 0, (MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]));		
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����midiInAddBuffer��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でmidiInAddBufferが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 	}
-	/* ���͂̊J�n(�X�^�[�g) */
+	/* 入力の開始(スタート) */
 	nRet = midiInStart (pMIDIIn->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
 		for (i = 0; i < MIDIIO_SYSXNUM; i++) {
@@ -981,7 +982,7 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 		}
 		free (pMIDIIn->m_pBuf);
 		free (pMIDIIn);
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenA����midiInStart��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenA内でmidiInStartが%dを返しました。\r\n", nRet);
 		return NULL;
 	}
 	pMIDIIn->m_bStarting = 1;
@@ -990,7 +991,7 @@ MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName) {
 }
 
 
-/* MIDI���̓f�o�C�X���J��(UNICODE) */
+/* MIDI入力デバイスを開く(UNICODE) */
 MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 	MIDIINCAPSW tagMIDIInCaps;
 	MIDI* pMIDIIn = NULL;
@@ -1000,15 +1001,15 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 	if (pszDeviceName == NULL) {
 		return NULL;
 	}
-	/* �f�o�C�X�����󕶎��񖔂�"None"����"�Ȃ�"�̏ꍇ�͉����J���Ȃ� */
+	/* デバイス名が空文字列又は"None"又は"なし"の場合は何も開かない */
 	if (*pszDeviceName == 0) {
 		return NULL;
 	}
 	else if (wcscmp (pszDeviceName, L"(None)") == 0 ||
-		wcscmp (pszDeviceName, L"(�Ȃ�)") == 0) {
+		wcscmp (pszDeviceName, L"(なし)") == 0) {
 		return NULL;
 	}
-	/* �f�o�C�X������͂����Ԗڂ�MIDI�o�̓f�o�C�X������ */
+	/* デバイス名を解析し何番目のMIDI出力デバイスか判定 */
 	nNumDevices = midiInGetNumDevs ();
 	for (i = 0; i < nNumDevices; i++) {
 		memset (&tagMIDIInCaps, 0, sizeof (MIDIINCAPSW));
@@ -1017,19 +1018,19 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 			break;
 	}
 	if (i >= nNumDevices) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����MIDI���̓f�o�C�X��������܂���B-%s\n", pszDeviceName);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でMIDI入力デバイスが見つかりません。-%s\r\n", pszDeviceName);
 		return NULL;
 	}
-	/* MIDIIn�\���̂̊m�� */
+	/* MIDIIn構造体の確保 */
 	pMIDIIn = calloc (1, sizeof (MIDI));
 	if (pMIDIIn == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIIn_OpenW内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	lDeviceNameLen = size_ttolong (wcslen (pszDeviceName) + 1);
 	pMIDIIn->m_pDeviceName = calloc (lDeviceNameLen, sizeof (wchar_t));
 	if (pMIDIIn->m_pDeviceName == NULL) {
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����calloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIIn_OpenW内でcallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	wcsncpy_s ((wchar_t*)(pMIDIIn->m_pDeviceName), lDeviceNameLen, pszDeviceName, lDeviceNameLen - 1);
@@ -1039,28 +1040,28 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 	pMIDIIn->m_pBuf = malloc (MIDIIO_BUFSIZE);
 	if (pMIDIIn->m_pBuf == NULL) {
 		free (pMIDIIn);
-		_RPTF0 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����malloc��NULL��Ԃ��܂����B\n");
+		_RPTF0 (_CRT_WARN, "エラー：MIDIIn_OpenW内でmallocがNULLを返しました。\r\n");
 		return NULL;
 	}
 	pMIDIIn->m_lBufSize = MIDIIO_BUFSIZE;
 	MIDIIO_UnLockBuf (pMIDIIn);
-	/* MIDI���̓f�o�C�X�̃I�[�v�� */
+	/* MIDI入力デバイスのオープン */
 	nRet = midiInOpen ((HMIDIIN*)&(pMIDIIn->m_pDeviceHandle), i, 
 		(DWORD_PTR)MidiInProc, (DWORD_PTR)(pMIDIIn), CALLBACK_FUNCTION);
 	if (nRet != MMSYSERR_NOERROR) {
 		free (pMIDIIn->m_pBuf);
 		free (pMIDIIn);
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����midiInOpen��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でmidiInOpenが%dを返しました。\r\n", nRet);
 		return NULL;
 	}
-	/* SYSX�w�b�_�[���̗̈���m�ۂ��� */
+	/* SYSXヘッダーをの領域を確保する */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		pMIDIIn->m_pSysxHeader[i] = (MIDIHDR*)HeapAlloc (GetProcessHeap (),
 			HEAP_ZERO_MEMORY, sizeof (MIDIHDR));
 		if (pMIDIIn->m_pSysxHeader[i] == NULL) {
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����HeapAlloc��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でHeapAllocが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 
@@ -1069,12 +1070,12 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 		if (((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->lpData == NULL) {
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����HeapAlloc��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でHeapAllocが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 		((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->dwBufferLength = MIDIIO_MAXSYSXSIZE;
 	}
-	/* SYSX�w�b�_�[�����ׂđҋ@��Ԃɂ���(�X�^�[�g�O����) */
+	/* SYSXヘッダーをすべて待機状態にする(スタート前処理) */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		nRet = midiInPrepareHeader (pMIDIIn->m_pDeviceHandle, pMIDIIn->m_pSysxHeader[i], sizeof (MIDIHDR));
 		if (nRet != MMSYSERR_NOERROR) {
@@ -1082,7 +1083,7 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 			HeapFree (GetProcessHeap (), 0, (MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]));		
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����midiInPrepareHeader��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でmidiInPrepareHeaderが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 
@@ -1094,11 +1095,11 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 			HeapFree (GetProcessHeap (), 0, (MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]));		
 			free (pMIDIIn->m_pBuf);
 			free (pMIDIIn);
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����midiInAddBuffer��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でmidiInAddBufferが%dを返しました。\r\n", nRet);
 			return NULL;
 		}
 	}
-	/* ���͂̊J�n(�X�^�[�g) */
+	/* 入力の開始(スタート) */
 	nRet = midiInStart (pMIDIIn->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
 		for (i = 0; i < MIDIIO_SYSXNUM; i++) {
@@ -1108,7 +1109,7 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 		}
 		free (pMIDIIn->m_pBuf);
 		free (pMIDIIn);
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_OpenW����midiInStart��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_OpenW内でmidiInStartが%dを返しました。\r\n", nRet);
 		return NULL;
 	}
 	pMIDIIn->m_bStarting = 1;
@@ -1117,7 +1118,7 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName) {
 }
 
 
-/* MIDI���̓f�o�C�X�����B */
+/* MIDI入力デバイスを閉じる。 */
 long __stdcall MIDIIn_Close (MIDIIn* pMIDIIn) {
 	int nRet = 0;
 	int i, t;
@@ -1125,20 +1126,20 @@ long __stdcall MIDIIn_Close (MIDIIn* pMIDIIn) {
 		return 1;
 	}
 	_ASSERT (pMIDIIn->m_lMode == MIDIIO_MODEIN);
-	/* ���͂̒�~ */
+	/* 入力の停止 */
 	nRet = midiInStop  (pMIDIIn->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_Close����midiInStop��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_Close内でmidiInStopが%dを返しました。\r\n", nRet);
 		return 0;
 	}
 	pMIDIIn->m_bStarting = 0;
-	/* MIDI���͂̃��Z�b�g(�����Ŗ����͂�SYSX�o�b�t�@�̓R�[���o�b�N�ɕԂ���MHDR_DONE�t���O���Z�b�g����� */
+	/* MIDI入力のリセット(ここで未入力のSYSXバッファはコールバックに返されMHDR_DONEフラグがセットされる */
 	nRet = midiInReset (pMIDIIn->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_Close����midiInReset��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_Close内でmidiInResetが%dを返しました。\r\n", nRet);
 		return 0;
 	}
-	/* ���ׂĂ�SYSX�w�b�_�[�ɑ΂���MIM_LONGDATA��҂�(100�񎎍s) */
+	/* すべてのSYSXヘッダーに対してMIM_LONGDATAを待つ(100回試行) */
 	for (t = 0; t < 100; t++) {
 		for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 			if ((((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->dwFlags & MHDR_DONE) == 0) {
@@ -1151,30 +1152,30 @@ long __stdcall MIDIIn_Close (MIDIIn* pMIDIIn) {
 		Sleep (10);
 	}
 	if (t == 100) {
-		_RPTF0 (_CRT_WARN, "�x���FMIDIIn_Close����MIM_LONGDATA���R�[���o�b�N����Ă��Ȃ��o�b�t�@������܂��B\n");
+		_RPTF0 (_CRT_WARN, "警告：MIDIIn_Close内でMIM_LONGDATAがコールバックされていないバッファがあります。\r\n");
 	}
-	/* SYSX�w�b�_�[�̕s����(�X�g�b�v�㏈��) */
+	/* SYSXヘッダーの不準備(ストップ後処理) */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		nRet = midiInUnprepareHeader (pMIDIIn->m_pDeviceHandle, pMIDIIn->m_pSysxHeader[i], sizeof(MIDIHDR));
 		if (nRet != MMSYSERR_NOERROR) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_Close����midiInUnprepareHeader��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_Close内でmidiInUnprepareHeaderが%dを返しました。\r\n", nRet);
 			return 0;
 		}
 	}
-	/* SYSX�w�b�_�[�̉��(�N���[�Y�O����) */
+	/* SYSXヘッダーの解放(クローズ前処理) */
 	for (i = 0; i < MIDIIO_SYSXNUM; i++) {
 		HeapFree (GetProcessHeap(), 0, ((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->lpData);
 		((MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]))->lpData = NULL;
 		HeapFree (GetProcessHeap(), 0, (MIDIHDR*)(pMIDIIn->m_pSysxHeader[i]));
 		pMIDIIn->m_pSysxHeader[i] = NULL;
 	}
-	/* MIDI���̓f�o�C�X����� */
+	/* MIDI入力デバイスを閉じる */
 	nRet = midiInClose (pMIDIIn->m_pDeviceHandle);
 	if (nRet != MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_Close����midiInClose��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_Close内でmidiInCloseが%dを返しました。\r\n", nRet);
 		return 0;
 	}
-	/* MIDI���͍\���̂̉�� */
+	/* MIDI入力構造体の解放 */
 	MIDIIO_LockBuf (pMIDIIn);
 	free (pMIDIIn->m_pBuf);
 	pMIDIIn->m_pBuf = NULL;
@@ -1186,14 +1187,14 @@ long __stdcall MIDIIn_Close (MIDIIn* pMIDIIn) {
 	return 1;
 }
 
-/* MIDI���̓f�o�C�X���ĂъJ��(ANSI)�B */
+/* MIDI入力デバイスを再び開く(ANSI)。 */
 MIDIIn* __stdcall MIDIIn_ReopenA (MIDIIn* pMIDIIn, const char* pszDeviceName) {
 	int nRet = 0;
 	if (pMIDIIn) {
 		_ASSERT (pMIDIIn->m_lMode == MIDIIO_MODEIN);
 		nRet = MIDIIn_Close (pMIDIIn);
 		if (nRet == 0) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_ReopenA����MIDIIn_Close��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_ReopenA内でMIDIIn_Closeが%dを返しました。\r\n", nRet);
 			return 0;
 		}
 		pMIDIIn = NULL;
@@ -1201,14 +1202,14 @@ MIDIIn* __stdcall MIDIIn_ReopenA (MIDIIn* pMIDIIn, const char* pszDeviceName) {
 	return MIDIIn_OpenA (pszDeviceName);
 }
 
-/* MIDI���̓f�o�C�X���ĂъJ��(UNICODE)�B */
+/* MIDI入力デバイスを再び開く(UNICODE)。 */
 MIDIIn* __stdcall MIDIIn_ReopenW (MIDIIn* pMIDIIn, const wchar_t* pszDeviceName) {
 	int nRet = 0;
 	if (pMIDIIn) {
 		_ASSERT (pMIDIIn->m_lMode == MIDIIO_MODEIN);
 		nRet = MIDIIn_Close (pMIDIIn);
 		if (nRet == 0) {
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_ReopenW����MIDIIn_Close��%d��Ԃ��܂����B\n", nRet);
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_ReopenW内でMIDIIn_Closeが%dを返しました。\r\n", nRet);
 			return 0;
 		}
 		pMIDIIn = NULL;
@@ -1217,20 +1218,20 @@ MIDIIn* __stdcall MIDIIn_ReopenW (MIDIIn* pMIDIIn, const wchar_t* pszDeviceName)
 }
 
 
-/* MIDI���̓f�o�C�X�����Z�b�g����B */
+/* MIDI入力デバイスをリセットする。 */
 long __stdcall MIDIIn_Reset (MIDIIn* pMIDIIn) {
 	int nRet = 0;
 	_ASSERT (pMIDIIn);
 	_ASSERT (pMIDIIn->m_lMode == MIDIIO_MODEIN);
 	nRet = midiInReset (pMIDIIn->m_pDeviceHandle);
 	if (nRet == MMSYSERR_NOERROR) {
-		_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_Reset����midiInReset��%d��Ԃ��܂����B\n", nRet);
+		_RPTF1 (_CRT_WARN, "エラー：MIDIIn_Reset内でmidiInResetが%dを返しました。\r\n", nRet);
 		return 0;
 	}
 	return 1;
 }
 
-/* MIDI���̓f�o�C�X����MIDI���b�Z�[�W��1���͂��� */
+/* MIDI入力デバイスからMIDIメッセージを1つ入力する */
 long __stdcall MIDIIn_GetMIDIMessage (MIDIIn* pMIDIIn, unsigned char* pMessage, long lLen) {
 	unsigned char cType;
 	long lMessageLen, lCopyLen;
@@ -1238,26 +1239,26 @@ long __stdcall MIDIIn_GetMIDIMessage (MIDIIn* pMIDIIn, unsigned char* pMessage, 
 	_ASSERT (pMIDIIn);
 	_ASSERT (pMIDIIn->m_lMode == MIDIIO_MODEIN);
 	_ASSERT (pMessage);
-	/* ��荞�ރf�[�^���o�b�t�@��ɂ��� */
+	/* 取り込むデータがバッファ上にある */
 	if (pMIDIIn->m_lReadPosition != pMIDIIn->m_lWritePosition) {
 		cType = *(pMIDIIn->m_pBuf + pMIDIIn->m_lReadPosition);
-		/* �m�[�g�E�`�����l���A�t�^�[�E�R���g���[���E�s�b�`�x���h */	
+		/* ノート・チャンネルアフター・コントロール・ピッチベンド */	
 		if (0x80 <= cType && cType <= 0xBF ||
 			0xE0 <= cType && cType <= 0xEF) {
-			pMIDIIn->m_byRunningStatus = cType; // 20090627�ǉ�
+			pMIDIIn->m_byRunningStatus = cType; // 20090627追加
 			lMessageLen = 3;
 		}
-		/* �v���O�����E�L�[�A�t�^�[�^�b�` */
+		/* プログラム・キーアフタータッチ */
 		else if (0xC0 <= cType && cType <= 0xDF) {
-			pMIDIIn->m_byRunningStatus = cType; // 20090627�ǉ�
+			pMIDIIn->m_byRunningStatus = cType; // 20090627追加
 			lMessageLen = 2;
 		}
-		/* �V�X�e�����A���^�C�����b�Z�[�W */
+		/* システムリアルタイムメッセージ */
 		else if (0xF8 <= cType && cType <= 0xFF) {
 			lMessageLen = 1;
 		}
-		/* �V�X�e���G�N�X�N���[�V�����b�Z�[�W */
-		else if (cType == 0xF0) { // 20090627�C��
+		/* システムエクスクルーシヴメッセージ */
+		else if (cType == 0xF0) { // 20090627修正
 			lMessageLen = 0;
 			p = pMIDIIn->m_pBuf + pMIDIIn->m_lReadPosition;
 			do {
@@ -1269,27 +1270,27 @@ long __stdcall MIDIIn_GetMIDIMessage (MIDIIn* pMIDIIn, unsigned char* pMessage, 
 			} while (*p <= 0x7F);
 			lMessageLen++;
 		}
-		/* MIDI�^�C���R�[�h�N�H�[�^�[�t���[���E�\���O�Z���N�g */
-		else if (cType == 0xF1 || cType == 0xF3) { // 20090627�ǉ�
+		/* MIDIタイムコードクォーターフレーム・ソングセレクト */
+		else if (cType == 0xF1 || cType == 0xF3) { // 20090627追加
 			lMessageLen = 2;
 		}
-		/* �\���O�|�W�V�����Z���N�^ */
-		else if (cType == 0xF2) { // 20090627�ǉ�
+		/* ソングポジションセレクタ */
+		else if (cType == 0xF2) { // 20090627追加
 			lMessageLen = 3;
 		}
-		/* �`���[�����N�G�X�g */
-		else if (cType == 0xF6) { // 20090627�ǉ�
+		/* チューンリクエスト */
+		else if (cType == 0xF6) { // 20090627追加
 			lMessageLen = 1;
 		}
-		/* ��`����Ă��Ȃ��V�X�e���R�������b�Z�[�W */
-		else if ((cType & 0xF0) == 0xF0) { // 20090627�ǉ�
-			_RPTF1 (_CRT_WARN, "�G���[�FMIDIIn_GetMIDIMessage���Œ�`����Ă��Ȃ�"
-				"MIDI���b�Z�[�W�����o���܂���(%d)�B\n", cType);
+		/* 定義されていないシステムコモンメッセージ */
+		else if ((cType & 0xF0) == 0xF0) { // 20090627追加
+			_RPTF1 (_CRT_WARN, "エラー：MIDIIn_GetMIDIMessage内で定義されていない"
+				"MIDIメッセージを検出しました(%d)。\r\n", cType);
 			lMessageLen = 1;
 		}
-		/* �����j���O�X�e�[�^�X���ȗ�����Ă���ꍇ(0x00<=cType<=0x7F) */
+		/* ランニングステータスが省略されている場合(0x00<=cType<=0x7F) */
 		else {
-			if ((pMIDIIn->m_byRunningStatus & 0xF0) == 0xC0 || // 20090627�ǉ�
+			if ((pMIDIIn->m_byRunningStatus & 0xF0) == 0xC0 || // 20090627追加
 				(pMIDIIn->m_byRunningStatus & 0xF0) == 0xD0) {
 				lMessageLen = 1;
 			}
@@ -1315,13 +1316,13 @@ long __stdcall MIDIIn_GetMIDIMessage (MIDIIn* pMIDIIn, unsigned char* pMessage, 
 		MIDIIO_UnLockBuf (pMIDIIn);
 		return lCopyLen;
 	}
-	/* ��荞�ރf�[�^���o�b�t�@��ɂȂ� */
+	/* 取り込むデータがバッファ上にない */
 	else {
 		return 0;
 	}
 }
 
-/* MIDI���̓f�o�C�X����1�o�C�g���͂��� */
+/* MIDI入力デバイスから1バイト入力する */
 long __stdcall MIDIIn_GetByte (MIDIIn* pMIDIIn, unsigned char* p) {
 	long lRet;
 	_ASSERT (pMIDIIn);
@@ -1343,14 +1344,14 @@ long __stdcall MIDIIn_GetByte (MIDIIn* pMIDIIn, unsigned char* p) {
 	return lRet;
 }
 
-/* MIDI���̓f�o�C�X����C�Ӓ��̃f�[�^����͂��� */
+/* MIDI入力デバイスから任意長のデータを入力する */
 long __stdcall MIDIIn_GetBytes (MIDIIn* pMIDIIn, unsigned char* pData, long lLen) {
 	unsigned char cType;
 	long lLen2, lCopyLen;
 	_ASSERT (pMIDIIn);
 	_ASSERT (pMIDIIn->m_lMode == MIDIIO_MODEIN);
 	_ASSERT (pData);
-	/* ��荞�ރf�[�^���o�b�t�@��ɂ��� */
+	/* 取り込むデータがバッファ上にある */
 	if (pMIDIIn->m_lReadPosition != pMIDIIn->m_lWritePosition) {
 		cType = *(pMIDIIn->m_pBuf + pMIDIIn->m_lReadPosition);
 		lLen2 = pMIDIIn->m_lWritePosition - pMIDIIn->m_lReadPosition;
@@ -1375,13 +1376,13 @@ long __stdcall MIDIIn_GetBytes (MIDIIn* pMIDIIn, unsigned char* pData, long lLen
 		MIDIIO_UnLockBuf (pMIDIIn);
 		return lCopyLen;
 	}
-	/* ��荞�ރf�[�^���o�b�t�@��ɂȂ� */
+	/* 取り込むデータがバッファ上にない */
 	else {
 		return 0;
 	}
 }
 
-/* ����MIDI���̓f�o�C�X�̖��O���擾����(ANSI)(20120415�ǉ�) */
+/* このMIDI入力デバイスの名前を取得する(ANSI)(20120415追加) */
 long __stdcall MIDIIn_GetThisDeviceNameA (MIDIIn* pMIDIIn, char* pszDeviceName, long lLen) {
 	long lLen2;
 	_ASSERT (pMIDIIn);
@@ -1392,7 +1393,7 @@ long __stdcall MIDIIn_GetThisDeviceNameA (MIDIIn* pMIDIIn, char* pszDeviceName, 
 	return CLIP (0, lLen2, lLen - 1);
 }
 
-/* ����MIDI���̓f�o�C�X�̖��O���擾����(UNICODE)(20120415�ǉ�) */
+/* このMIDI入力デバイスの名前を取得する(UNICODE)(20120415追加) */
 long __stdcall MIDIIn_GetThisDeviceNameW (MIDIIn* pMIDIIn, wchar_t* pszDeviceName, long lLen) {
 	long lLen2; 
 	_ASSERT (pMIDIIn);

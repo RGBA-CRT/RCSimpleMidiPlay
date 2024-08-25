@@ -1,14 +1,14 @@
 /******************************************************************************/
 /*                                                                            */
-/*  MIDIIO.h - MIDIIO�w�b�_�[�t�@�C��                      (C)2002-2012 ����  */
+/*  MIDIIO.h - MIDIIOヘッダーファイル                      (C)2002-2012 くず  */
 /*                                                                            */
 /******************************************************************************/
 
-/* ���̃��W���[���͕��ʂ̂b����ŏ�����Ă���B */
-/* ���̃��C�u�����́AGNU �򓙈�ʌ��O���p�����_��(LGPL)�Ɋ�Â��z�z�����B */
-/* �v���W�F�N�g�z�[���y�[�W(��)�F"http://openmidiproject.sourceforge.jp/index.html" */
-/* MIDI���̓I�u�W�F�N�g�̃I�[�v���E�N���[�Y�E���Z�b�g�E�f�[�^��M(SYSX�܂�) */
-/* MIDI�o�̓I�u�W�F�N�g�̃I�[�v���E�N���[�Y�E���Z�b�g�E�f�[�^���M(SYSX�܂�) */
+/* このモジュールは普通のＣ言語で書かれている。 */
+/* このライブラリは、GNU 劣等一般公衆利用許諾契約書(LGPL)に基づき配布される。 */
+/* プロジェクトホームページ(仮)："http://openmidiproject.sourceforge.jp/index.html" */
+/* MIDI入力オブジェクトのオープン・クローズ・リセット・データ受信(SYSX含む) */
+/* MIDI出力オブジェクトのオープン・クローズ・リセット・データ送信(SYSX含む) */
 
 /* This library is free software; you can redistribute it and/or */
 /* modify it under the terms of the GNU Lesser General Public */
@@ -33,19 +33,19 @@ extern "C" {
 
 #define MIDIIO_BUFSIZE 16384
 #define MIDIIO_SYSXNUM 4
-#define MIDIIO_MAXSYSXSIZE 4096 /* 20220303�ǉ� */
+#define MIDIIO_MAXSYSXSIZE 4096 /* 20220303追加 */
 #define MIDIIO_SYSXSIZE 4096
 #define MIDIIO_MODEIN  0x0000
 #define MIDIIO_MODEOUT 0x0001
 
-/* ���̃}�N�����g�p���邱�Ƃɂ��A*/
-/* �W��C����̃t�@�C�����o�͂Ɠ������o��MIDI���o�͂�������B */
+/* 次のマクロを使用することにより、*/
+/* 標準C言語のファイル入出力と同じ感覚でMIDI入出力を扱える。 */
 #define MIDIIO_NONE "(None)"
-#define MIDIIO_NONEJ "(�Ȃ�)"
+#define MIDIIO_NONEJ "(なし)"
 #define MIDIIO_DEFAULT "Default"
-#define MIDIIO_DEFAULTJ "�f�t�H���g"
+#define MIDIIO_DEFAULTJ "デフォルト"
 #define MIDIIO_MIDIMAPPER "MIDI Mapper"
-#define MIDIIO_MIDIMAPPERJ "MIDI �}�b�p�["
+#define MIDIIO_MIDIMAPPERJ "MIDI マッパー"
 
 
 
@@ -65,10 +65,10 @@ extern "C" {
 #define mread(PBUF,LEN,MIDI) (MIDIIn_GetBytes((MIDI),(PBUF),(LEN)))
 #define mwrite(PBUF,LEN,MIDI) (MIDIOut_PutBytes((MIDI),(PBUF),(LEN)))
 
-/* MIDI�\���� */
+/* MIDI構造体 */
 typedef struct tagMIDI {
 	void* m_pDeviceHandle;
-	void* m_pDeviceName; /* 20120124�^�ƒ������C�� */
+	void* m_pDeviceName; /* 20120124型と長さを修正 */
 	long  m_lMode;
 	void* m_pSysxHeader[MIDIIO_SYSXNUM];
 	long  m_bStarting;
@@ -85,16 +85,16 @@ typedef struct tagMIDI {
 
 /******************************************************************************/
 /*                                                                            */
-/*  MIDIOut�N���X�֐��Q                                                       */
+/*  MIDIOutクラス関数群                                                       */
 /*                                                                            */
 /******************************************************************************/
 
 #define MIDIOut MIDI
 
-/* MIDI�o�̓f�o�C�X�̐��𒲂ׂ� */
+/* MIDI出力デバイスの数を調べる */
 long __stdcall MIDIOut_GetDeviceNum ();
 
-/* MIDI�o�̓f�o�C�X�̖��O�𒲂ׂ� */
+/* MIDI出力デバイスの名前を調べる */
 long __stdcall MIDIOut_GetDeviceNameA (long lID, char* pszDeviceName, long lLen);
 long __stdcall MIDIOut_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lLen);
 #ifdef UNICODE
@@ -103,7 +103,7 @@ long __stdcall MIDIOut_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lL
 #define MIDIOut_GetDeviceName MIDIOut_GetDeviceNameA
 #endif
 
-/* MIDI�o�̓f�o�C�X���J�� */
+/* MIDI出力デバイスを開く */
 MIDIOut* __stdcall MIDIOut_OpenA (const char* pszDeviceName);
 MIDIOut* __stdcall MIDIOut_OpenW (const wchar_t* pszDeviceName);
 #ifdef UNICODE
@@ -112,10 +112,10 @@ MIDIOut* __stdcall MIDIOut_OpenW (const wchar_t* pszDeviceName);
 #define MIDIOut_Open MIDIOut_OpenA
 #endif
 
-/* MIDI�o�̓f�o�C�X����� */
+/* MIDI出力デバイスを閉じる */
 long __stdcall MIDIOut_Close (MIDIOut* pMIDIDevice);
 
-/* MIDI�o�̓f�o�C�X���ĂъJ�� */
+/* MIDI出力デバイスを再び開く */
 MIDIOut* __stdcall MIDIOut_ReopenA (MIDIOut* pMIDIOut, const char* pszDeviceName);
 MIDIOut* __stdcall MIDIOut_ReopenW (MIDIOut* pMIDIOut, const wchar_t* pszDeviceName);
 #ifdef UNICODE
@@ -124,19 +124,19 @@ MIDIOut* __stdcall MIDIOut_ReopenW (MIDIOut* pMIDIOut, const wchar_t* pszDeviceN
 #define MIDIOut_Reopen MIDIOut_ReopenA
 #endif
 
-/* MIDI�o�̓f�o�C�X�����Z�b�g���� */
+/* MIDI出力デバイスをリセットする */
 long __stdcall MIDIOut_Reset (MIDIOut* pMIDIDevice);
 
-/* MIDI�o�̓f�o�C�X��1���b�Z�[�W�o�͂��� */
+/* MIDI出力デバイスに1メッセージ出力する */
 long __stdcall MIDIOut_PutMIDIMessage (MIDIOut* pMIDI, unsigned char* pMessage, long lLen);
 
-/* MIDI�o�̓f�o�C�X��1�o�C�g���o�͂��� */
+/* MIDI出力デバイスに1バイトを出力する */
 long __stdcall MIDIOut_PutByte (MIDIOut* pMIDI, unsigned char cByte);
 
-/* MIDI�o�̓f�o�C�X�ɔC�Ӓ��̃o�C�i���f�[�^���o�͂��� */
+/* MIDI出力デバイスに任意長のバイナリデータを出力する */
 long __stdcall MIDIOut_PutBytes (MIDIOut* pMIDI, unsigned char* pBuf, long lLen);
 
-/* ����MIDI�o�̓f�o�C�X�̖��O���擾����(20120415�ǉ�) */
+/* このMIDI出力デバイスの名前を取得する(20120415追加) */
 long __stdcall MIDIOut_GetThisDeviceNameA (MIDIOut* pMIDIOut, char* pszDeviceName, long lLen);
 long __stdcall MIDIOut_GetThisDeviceNameW (MIDIOut* pMIDIOut, wchar_t* pszDeviceName, long lLen);
 #ifdef UNICODE
@@ -147,16 +147,16 @@ long __stdcall MIDIOut_GetThisDeviceNameW (MIDIOut* pMIDIOut, wchar_t* pszDevice
 
 /******************************************************************************/
 /*                                                                            */
-/*  MIDIIn�N���X�֐��Q                                                        */
+/*  MIDIInクラス関数群                                                        */
 /*                                                                            */
 /******************************************************************************/
 
 #define MIDIIn  MIDI
 
-/* MIDI���̓f�o�C�X�̐��𒲂ׂ� */
+/* MIDI入力デバイスの数を調べる */
 long __stdcall MIDIIn_GetDeviceNum ();
 
-/* MIDI���̓f�o�C�X�̖��O�𒲂ׂ� */
+/* MIDI入力デバイスの名前を調べる */
 long __stdcall MIDIIn_GetDeviceNameA (long lID, char* pszDeviceName, long lLen);
 long __stdcall MIDIIn_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lLen);
 #ifdef UNICODE
@@ -165,7 +165,7 @@ long __stdcall MIDIIn_GetDeviceNameW (long lID, wchar_t* pszDeviceName, long lLe
 #define MIDIIn_GetDeviceName MIDIIn_GetDeviceNameA
 #endif
 
-/* MIDI���̓f�o�C�X���J�� */
+/* MIDI入力デバイスを開く */
 MIDIIn* __stdcall MIDIIn_OpenA (const char* pszDeviceName);
 MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName);
 #ifdef UNICODE
@@ -174,10 +174,10 @@ MIDIIn* __stdcall MIDIIn_OpenW (const wchar_t* pszDeviceName);
 #define MIDIIn_Open MIDIIn_OpenA
 #endif
 
-/* MIDI���̓f�o�C�X����� */
+/* MIDI入力デバイスを閉じる */
 long __stdcall MIDIIn_Close (MIDIIn* pMIDIDevice);
 
-/* MIDI���̓f�o�C�X���ĂъJ�� */
+/* MIDI入力デバイスを再び開く */
 MIDIIn* __stdcall MIDIIn_ReopenA (MIDIIn* pMIDIIn, const char* pszDeviceName);
 MIDIIn* __stdcall MIDIIn_ReopenW (MIDIIn* pMIDIIn, const wchar_t* pszDeviceName);
 #ifdef UNICODE
@@ -186,19 +186,19 @@ MIDIIn* __stdcall MIDIIn_ReopenW (MIDIIn* pMIDIIn, const wchar_t* pszDeviceName)
 #define MIDIIn_Reopen MIDIIn_ReopenA
 #endif
 
-/* MIDI���̓f�o�C�X�����Z�b�g���� */
+/* MIDI入力デバイスをリセットする */
 long __stdcall MIDIIn_Reset (MIDIIn* pMIDIDevice);
 
-/* MIDI���̓f�o�C�X����1���b�Z�[�W���͂��� */
+/* MIDI入力デバイスから1メッセージ入力する */
 long __stdcall MIDIIn_GetMIDIMessage (MIDIIn* pMIDIIn, unsigned char* pMessage, long lLen);
 
-/* MIDI���̓f�o�C�X����1�o�C�g���͂��� */
+/* MIDI入力デバイスから1バイト入力する */
 long __stdcall MIDIIn_GetByte (MIDIIn* pMIDIIn, unsigned char* pByte);
 
-/* MIDI���̓f�o�C�X����C�Ӓ��̃o�C�i���f�[�^����͂��� */
+/* MIDI入力デバイスから任意長のバイナリデータを入力する */
 long __stdcall MIDIIn_GetBytes (MIDIIn* pMIDIIn, unsigned char* pBuf, long lLen);
 
-/* ����MIDI���̓f�o�C�X�̖��O���擾����(20120415�ǉ�) */
+/* このMIDI入力デバイスの名前を取得する(20120415追加) */
 long __stdcall MIDIIn_GetThisDeviceNameA (MIDIIn* pMIDIIn, char* pszDeviceName, long lLen);
 long __stdcall MIDIIn_GetThisDeviceNameW (MIDIIn* pMIDIIn, wchar_t* pszDeviceName, long lLen);
 #ifdef UNICODE
