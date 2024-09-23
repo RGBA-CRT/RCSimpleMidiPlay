@@ -37,6 +37,16 @@
 #include <crtdbg.h>
 #include "MIDIData.h"
 
+#ifndef _MSC_VER
+#define fopen_s(fd, name, mode) ((*fd = fopen(name, mode)) ? errno : errno)
+#define _wfopen_s(fd, name, mode) ((*fd = _wfopen(name, mode)) ? errno : errno)
+#define _snprintf_s(buf, bsize, count, format, ...) (snprintf(buf, (bsize<count) ? bsize : count, format, __VA_ARGS__))
+#define sscanf_s sscanf
+#define strcpy_s(str1, str1len, str2) {strncpy(str1,str2,str1len); ((char*)str1)[str1len-1]='\0';}
+#define strncpy_s(str1, str1len, str2, str2len) strcpy_s(str1,(str1len<(str2len+1))?str1len:(str2len+1), str2)
+#define wcsncpy_s(str1, str1len, str2, str2len) wcsncpy(str1,(str1len<(str2len+1))?str1len:(str2len+1), str2)
+#endif
+
 /* 念のためverifyマクロも定義 */
 #ifndef verify
 #ifdef _DEBUG
@@ -8988,9 +8998,15 @@ MIDIData* __stdcall MIDIData_LoadFromTextA (const char* pszFileName) {
 		fclose (pFile);
 		return NULL;
 	}
+#ifdef _MSC_VER
 	sscanf_s (szTextLine, "%s %lX %lX %lX %lX %lX %lX %lX\n",
 		szType, size_ttolong (sizeof (szType)), &lFormat, &lNumTrack, &lTimeBase, 
 		&lUser1, &lUser2, &lUser3, &lUserFlag);
+#else
+	sscanf (szTextLine, "%255s %lX %lX %lX %lX %lX %lX %lX\n",
+		szType, &lFormat, &lNumTrack, &lTimeBase, 
+		&lUser1, &lUser2, &lUser3, &lUserFlag);
+#endif /* _MSC_VER */
 	if (lFormat < 0 || lFormat >= 2) {
 		fclose (pFile);
  		return NULL;
@@ -9042,9 +9058,15 @@ MIDIData* __stdcall MIDIData_LoadFromTextA (const char* pszFileName) {
 			MIDIData_Delete (pMIDIData);
 			return NULL;
 		}
+#ifdef _MSC_VER
 		sscanf_s (szTextLine, "%s %lX %lX %lX %lX %lX %lX\n",
 			szType, size_ttolong (sizeof (szType)), &lIndex, &lNumEvent,
 			&lUser1, &lUser2, &lUser3, &lUserFlag);
+#else
+		sscanf (szTextLine, "%255s %lX %lX %lX %lX %lX %lX\n",
+			szType, &lIndex, &lNumEvent,
+			&lUser1, &lUser2, &lUser3, &lUserFlag);
+#endif 
 		pMIDITrack->m_lTempIndex = lIndex;
 		pMIDITrack->m_lUser1 = lUser1;
 		pMIDITrack->m_lUser2 = lUser2;
@@ -9060,8 +9082,13 @@ MIDIData* __stdcall MIDIData_LoadFromTextA (const char* pszFileName) {
 				MIDIData_Delete (pMIDIData);
 				return NULL;
 			}
+#ifdef _MSC_VER
 			sscanf_s (szTextLine, "%s %lX %lX %lX %lX",
 				szType, size_ttolong (sizeof (szType)), &lIndex, &lTime, &lKind, &lLen);
+#else
+			sscanf (szTextLine, "%255s %lX %lX %lX %lX",
+				szType, &lIndex, &lTime, &lKind, &lLen);
+#endif 
 			memset (ucData, 0, sizeof (ucData));
 			for (k = 0; k < 5; k++) {
 				p = strchr (p, ' ');
@@ -9196,9 +9223,15 @@ MIDIData* __stdcall MIDIData_LoadFromTextW (const wchar_t* pszFileName) {
 		fclose (pFile);
 		return NULL;
 	}
+#ifdef _MSC_VER
 	sscanf_s (szTextLine, "%s %lX %lX %lX %lX %lX %lX %lX\n",
 		szType, size_ttolong (sizeof (szType)), &lFormat, &lNumTrack, &lTimeBase, 
 		&lUser1, &lUser2, &lUser3, &lUserFlag);
+#else
+	sscanf (szTextLine, "%255s %lX %lX %lX %lX %lX %lX %lX\n",
+		szType, &lFormat, &lNumTrack, &lTimeBase, 
+		&lUser1, &lUser2, &lUser3, &lUserFlag);
+#endif 
 	if (lFormat < 0 || lFormat >= 2) {
 		fclose (pFile);
  		return NULL;
@@ -9250,9 +9283,15 @@ MIDIData* __stdcall MIDIData_LoadFromTextW (const wchar_t* pszFileName) {
 			MIDIData_Delete (pMIDIData);
 			return NULL;
 		}
+#ifdef _MSC_VER
 		sscanf_s (szTextLine, "%s %lX %lX %lX %lX %lX %lX\n",
 			szType, size_ttolong (sizeof (szType)), &lIndex, &lNumEvent,
 			&lUser1, &lUser2, &lUser3, &lUserFlag);
+#else
+		sscanf (szTextLine, "%255s %lX %lX %lX %lX %lX %lX\n",
+			szType, &lIndex, &lNumEvent,
+			&lUser1, &lUser2, &lUser3, &lUserFlag);
+#endif 
 		pMIDITrack->m_lTempIndex = lIndex;
 		pMIDITrack->m_lUser1 = lUser1;
 		pMIDITrack->m_lUser2 = lUser2;
@@ -9268,8 +9307,13 @@ MIDIData* __stdcall MIDIData_LoadFromTextW (const wchar_t* pszFileName) {
 				MIDIData_Delete (pMIDIData);
 				return NULL;
 			}
+#ifdef _MSC_VER
 			sscanf_s (szTextLine, "%s %lX %lX %lX %lX",
 				szType, size_ttolong (sizeof (szType)), &lIndex, &lTime, &lKind, &lLen);
+#else
+			sscanf (szTextLine, "%255s %lX %lX %lX %lX",
+				szType, &lIndex, &lTime, &lKind, &lLen);
+#endif 
 			memset (ucData, 0, sizeof (ucData));
 			for (k = 0; k < 5; k++) {
 				p = strchr (p, ' ');

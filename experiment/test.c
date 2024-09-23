@@ -97,7 +97,7 @@ int main_smfload(const char *filepath) {
 
   int track_num = 0;
 /* それぞれのトラックについて */
-#define MAX_TRACK 32
+#define MAX_TRACK 128
   MIDIEvent *events[MAX_TRACK];
   BOOL tr_end[MAX_TRACK] = {FALSE};
   {

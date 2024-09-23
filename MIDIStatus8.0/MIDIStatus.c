@@ -29,6 +29,11 @@
 #include <windows.h>
 #include "MIDIStatus.h"
 
+#ifndef _MSC_VER
+#define fopen_s(fd, name, mode) ((*fd = fopen(name, mode)) ? errno : errno)
+#define _wfopen_s(fd, name, mode) ((*fd = _wfopen(name, mode)) ? errno : errno)
+#endif
+
 /* 汎用マクロ(最小、最大、挟み込み) */
 #ifndef MIN
 #define MIN(A,B) ((A)>(B)?(B):(A))
