@@ -42,9 +42,9 @@
 #define _wfopen_s(fd, name, mode) ((*fd = _wfopen(name, mode)) ? errno : errno)
 #define _snprintf_s(buf, bsize, count, format, ...) (snprintf(buf, (bsize<count) ? bsize : count, format, __VA_ARGS__))
 #define sscanf_s sscanf
-#define strcpy_s(str1, str1len, str2) {strncpy(str1,str2,str1len); ((char*)str1)[str1len-1]='\0';}
-#define strncpy_s(str1, str1len, str2, str2len) strcpy_s(str1,(str1len<(str2len+1))?str1len:(str2len+1), str2)
-#define wcsncpy_s(str1, str1len, str2, str2len) wcsncpy(str1,(str1len<(str2len+1))?str1len:(str2len+1), str2)
+#define strcpy_s(str1, str1len, str2) do{strncpy(str1,str2,str1len); ((char*)str1)[str1len-1]='\0';}while(0)
+#define strncpy_s(str1, str1len, str2, str2len) strcpy_s(str1,((str1len<(str2len+1))?str1len:(str2len+1)), str2)
+#define wcsncpy_s(str1, str1len, str2, str2len) wcsncpy(str1,((str1len<(str2len+1))?str1len:(str2len+1)), str2)
 #endif
 
 /* 念のためverifyマクロも定義 */
